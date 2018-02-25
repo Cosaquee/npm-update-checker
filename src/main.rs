@@ -55,9 +55,10 @@ fn check_version(name: String, version: String) {
     });
 
     let response = core.run(f).unwrap(); 
+    // TODO: that is bad
     let correct_response = &response.replace("dist-tags", "disttags");
     let package_info : Response =  serde_json::from_str(&correct_response).unwrap();
-    println!("{:?}", package_info.disttags);
+    // We need to check if semver allows for update or not.
 }
 
 fn main() {
