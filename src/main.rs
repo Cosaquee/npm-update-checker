@@ -10,7 +10,6 @@ extern crate semver;
 extern crate serde_derive;
 
 use std::env;
-use std::io::{self, Write};
 
 use futures::Future;
 use futures::stream::Stream;
@@ -20,26 +19,27 @@ use hyper::Client;
 use std::fs::File;
 use std::io::prelude::*;
 
-use serde_json::{Value, Error, Map};
+use serde_json::{Value, Map};
 
-use semver::Version;
+use semver::{Version, VersionReq};
 
 #[derive(Serialize, Deserialize)]
 struct Project {
     name: String,
     version: String,
     author: String,
-    dependencies: Map<String, Value>
+    dependencies: Map<String, Value>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Response {
     name: String,
     versions: Map<String, Value>,
-    disttags: Map<String, Value>
+    disttags: Map<String, Value>,
 }
 
-fn check_version(name: String, version: String) {
+fn check_version(name: String, v: String) {
+    let version = &v.replace("\"", "");
     let full_url = "http://registry.npmjs.org/".to_owned() + &name;
     let url = full_url.parse::<hyper::Uri>().unwrap();
 
@@ -54,11 +54,22 @@ fn check_version(name: String, version: String) {
         })
     });
 
-    let response = core.run(f).unwrap(); 
-    // TODO: that is bad
+    let response = core.run(f).unwrap();
+    // TODO: This is really bad
     let correct_response = &response.replace("dist-tags", "disttags");
-    let package_info : Response =  serde_json::from_str(&correct_response).unwrap();
-    // We need to check if semver allows for update or not.
+    let package_info: Response = serde_json::from_str(&correct_response).unwrap();
+    let latest_version = package_info.disttags["latest"].as_str().unwrap();
+
+    let current_version = VersionReq::parse(&version).unwrap();
+    let version_match = current_version.matches(&Version::parse(&latest_version).unwrap());
+    let (_, vv) = version.split_at(1);
+    match version_match {
+        false => println!("{}: Hey, new version that is SemVer incompatible, our: {}, latest {}", name, version, latest_version),
+        true => match vv == latest_version {
+            false => println!("{}: Hey, new SemVer compatible version is out, our: {}, latest: {}", name, version, latest_version),
+            true => return
+        }
+    }
 }
 
 fn main() {
@@ -75,7 +86,7 @@ fn main() {
     let mut file = File::open(url).unwrap();
     let mut content = String::new();
     file.read_to_string(&mut content).unwrap();
-    let project : Project = serde_json::from_str(&content).unwrap();
+    let project: Project = serde_json::from_str(&content).unwrap();
 
     for dependency in project.dependencies {
         let (name, version) = dependency;
